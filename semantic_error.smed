@@ -1,0 +1,9 @@
+PATIENT p2 {
+    WEIGHT: 65 kg;
+}
+
+DRUG heparin {
+    MAX_RATE: 10 mg/hr;
+}
+
+INFUSION inf2 FOR p2 USING heparin AT 25 mg/hr;

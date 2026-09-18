@@ -1,0 +1,10 @@
+# MEDSAFE-DSL sample clinical protocol
+PATIENT p1 {
+    WEIGHT: 70 kg;
+}
+
+DRUG dopamine {
+    MAX_RATE: 20 mg/hr;
+}
+
+INFUSION inf1 FOR p1 USING dopamine AT 15 mg/hr;
