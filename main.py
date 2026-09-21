@@ -13,7 +13,9 @@ from semantic import SemanticAnalyzer, SemanticError, ReferenceError_
 from symbol_table import SymbolCollisionError
 
 
-def run(path: str, show_tokens: bool, show_ast: bool, show_symtab: bool) -> int:
+def run(path: str, show_tokens: bool, show_ast: bool, show_symtab: bool, quiet_stages: bool = False) -> int:
+    stage_mode = not (show_tokens or show_ast or show_symtab) and not quiet_stages
+
     with open(path, "r") as f:
         source = f.read()
 
@@ -22,6 +24,8 @@ def run(path: str, show_tokens: bool, show_ast: bool, show_symtab: bool) -> int:
     except LexicalError as e:
         print(e)
         return 1
+    if stage_mode:
+        print("LEXICAL ANALYSIS      OK")
 
     if show_tokens:
         for t in tokens:
@@ -32,6 +36,9 @@ def run(path: str, show_tokens: bool, show_ast: bool, show_symtab: bool) -> int:
     except SyntaxErrorMEDSAFE as e:
         print(e)
         return 1
+    if stage_mode:
+        print("SYNTAX ANALYSIS       OK")
+        print("AST CONSTRUCTION      OK")
 
     if show_ast:
         print(program.pretty())
@@ -42,6 +49,9 @@ def run(path: str, show_tokens: bool, show_ast: bool, show_symtab: bool) -> int:
     except (SymbolCollisionError, ReferenceError_, SemanticError) as e:
         print(e)
         return 1
+    if stage_mode:
+        print("SYMBOL TABLE          OK")
+        print("SEMANTIC ANALYSIS     OK")
 
     if show_symtab:
         print(f"{'NAME':<12}{'KIND':<10}{'TYPE':<28}{'BASELINE':<10}{'LINE:COL'}")
@@ -49,11 +59,18 @@ def run(path: str, show_tokens: bool, show_ast: bool, show_symtab: bool) -> int:
             print(f"{entry.name:<12}{entry.kind:<10}{entry.inferred_type:<28}"
                   f"{entry.baseline_value:<10}{entry.declared_at[0]}:{entry.declared_at[1]}")
 
+    if stage_mode:
+        print("DOMAIN STATIC ANALYSIS OK  (rate-limit + unit normalization)")
+
     print(f"\n[Diagnostic Report] {len(analyzer.diagnostics)} infusion rule(s) statically verified:")
     for d in analyzer.diagnostics:
         print(f"  INFUSION {d.infusion}: {d.normalized_rate_mg_per_hr:.3f} mg/hr <= "
               f"{d.normalized_limit_mg_per_hr:.3f} mg/hr  -> {d.verdict}")
-    print("Compilation successful. No static safety violations detected.")
+
+    if stage_mode:
+        print("COMPILATION SUCCESSFUL")
+    else:
+        print("Compilation successful. No static safety violations detected.")
     return 0
 
 
