@@ -1,0 +1,12 @@
+# Phase 3.2 demonstration: bounded infusions (OVER) and interactions with REPEAT doses.
+# * dopamine runs 8 mg/hr for 10 hr (80 mg) -> counted statically against MAX_TOTAL 150 mg
+# * a heparin REPEAT dose and the dopamine infusion interact; their combined peak is
+#   exactly the INTERACTION limit (8 + 12 = 20 mg/hr), proven at compile time.
+PATIENT p1 { WEIGHT: 70 kg; }
+DRUG dopamine { MAX_RATE: 20 mg/hr; MAX_TOTAL: 150 mg; }
+DRUG heparin  { MAX_RATE: 15 mg/hr; }
+
+INTERACTION dopamine WITH heparin LIMIT 20 mg/hr;
+
+INFUSION base FOR p1 USING dopamine AT 8 mg/hr OVER 10 hr;
+REPEAT bolus  FOR p1 USING heparin AT 12 mg/hr EVERY 6 hr UNTIL 12 hr OVER 1 hr;

@@ -75,6 +75,7 @@ class InfusionDecl:
     col: int
     bindings: list[DrugBinding] = field(default_factory=list)
     conditional: ConditionalBinding | None = None
+    duration: Quantity | None = None     # Phase 3.2: optional "OVER n hr" (bounded infusion)
 
 
 @dataclass
@@ -124,11 +125,15 @@ class Program:
                 lines.append(f"{pad}    IF WEIGHT {c.comparator} {c.threshold.value}{c.threshold.unit}")
                 lines.append(f"{pad}    THEN Quantity({c.then_rate.value} {c.then_rate.unit}/{c.then_rate.rate_unit})")
                 lines.append(f"{pad}    ELSE Quantity({c.else_rate.value} {c.else_rate.unit}/{c.else_rate.rate_unit})")
+                if i.duration:
+                    lines.append(f"{pad}    OVER {i.duration.value}{i.duration.unit}")
             else:
                 drugs_str = ", ".join(b.drug for b in i.bindings)
                 lines.append(f"{pad}  InfusionDecl(name={i.name!r}, patient={i.patient!r}, drugs=[{drugs_str}])")
                 for b in i.bindings:
                     lines.append(f"{pad}    Quantity({b.rate.value} {b.rate.unit}/{b.rate.rate_unit})  [{b.drug}]")
+                if i.duration:
+                    lines.append(f"{pad}    OVER {i.duration.value}{i.duration.unit}")
         for r in self.repeats:
             lines.append(f"{pad}  RepeatDecl(name={r.name!r}, patient={r.patient!r}, drug={r.drug!r})")
             lines.append(f"{pad}    Quantity({r.rate.value} {r.rate.unit}/{r.rate.rate_unit}) EVERY {r.interval.value}{r.interval.unit} UNTIL {r.until.value}{r.until.unit}"

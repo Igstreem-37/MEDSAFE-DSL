@@ -109,7 +109,7 @@ class MedsafeVM:
         self.patients: dict[str, float] = {}
         self.drugs: dict[str, dict] = {}
         self.interactions: dict[frozenset, float] = {}
-        self.continuous: list[tuple] = []          # (label, patient, drug, rate)
+        self.continuous: list[tuple] = []          # (label, patient, drug, rate, duration_hr or None)
         self.schedules: list[dict] = []
         self.load_log: list[str] = []
         self._loaded = False
@@ -146,7 +146,9 @@ class MedsafeVM:
             elif op == "INFUSE":
                 self._require_patient(a["patient"], where)
                 self._require_drug(a["drug"], where)
-                self.continuous.append((a["subject"], a["patient"], a["drug"], _rate_mg_hr(a["rate"], where)))
+                dur = float(a["duration_hr"]) if "duration_hr" in a else None
+                self.continuous.append((a["subject"], a["patient"], a["drug"],
+                                        _rate_mg_hr(a["rate"], where), dur))
             elif op == "SCHEDULE":
                 self._require_patient(a["patient"], where)
                 self._require_drug(a["drug"], where)
@@ -228,10 +230,15 @@ class MedsafeVM:
 
         horizon = self.horizon_hr
         if horizon is None:
-            horizon = max((s["until"] for s in self.schedules), default=24.0)
+            spans = [s["until"] for s in self.schedules] + \
+                    [c[4] for c in self.continuous if c[4] is not None]
+            horizon = max(spans, default=24.0)
         result = SimulationResult(horizon_hr=horizon)
 
         admins: list[_Admin] = []
+        for (label, patient, drug, rate, dur) in self.continuous:
+            if dur is not None:                      # Phase 3.2: bounded infusion [0, dur)
+                admins.append(_Admin(label, patient, drug, rate, 0.0, min(dur, horizon)))
         for s in self.schedules:
             for k in range(s["count"]):
                 start = k * s["interval"]
@@ -258,7 +265,9 @@ class MedsafeVM:
                 continue
             rates: dict = {}
             labels: list = []
-            for (label, patient, drug, rate) in self.continuous:
+            for (label, patient, drug, rate, dur) in self.continuous:
+                if dur is not None:
+                    continue                         # bounded infusions run as admins
                 rates[(patient, drug)] = rates.get((patient, drug), 0.0) + rate
                 labels.append(label)
             for ad in admins:

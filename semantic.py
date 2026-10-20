@@ -93,6 +93,7 @@ class InteractionCheck:
     limit_mg_per_hr: float
     sources: list
     verdict: str = "SAFE"
+    peak_time_hr: float = 0.0     # Phase 3.2: when the combined rate peaks
 
 
 @dataclass
@@ -153,6 +154,7 @@ class SemanticAnalyzer:
         self._check_infusions()
         self._check_repeats()
         self._check_concurrent_rates()
+        self._check_cumulative()
         self._check_interactions()
         return self.symtab
 
@@ -201,9 +203,21 @@ class SemanticAnalyzer:
                           line=line, col=col)
 
     # ---- stage 2a: infusion / multi-drug / conditional checking -------
+    def _infusion_duration(self, inf):
+        """Phase 3.2: optional OVER on an INFUSION. Returns hours, or None when
+        the infusion is unbounded (runs for the whole simulation horizon)."""
+        if inf.duration is None:
+            return None
+        hours = normalize_duration_to_hr(inf.duration)
+        if hours <= 0:
+            raise SemanticError(f"infusion {inf.name!r} has a non-positive OVER duration",
+                                inf.line, inf.col)
+        return hours
+
     def _check_infusions(self) -> None:
         for inf in self.program.infusions:
             self._require_patient(inf.patient, f"infusion {inf.name!r}", inf.line, inf.col)
+            inf_hours = self._infusion_duration(inf)
 
             if inf.conditional is not None:
                 c = inf.conditional
@@ -228,6 +242,7 @@ class SemanticAnalyzer:
                         "condition": f"WEIGHT {c.comparator} {c.threshold.value}{c.threshold.unit}",
                         "resolved": condition_true,
                         "branch": branch,
+                        "duration_hr": inf_hours,
                     },
                 )
                 self.checks.append(check)
@@ -238,6 +253,7 @@ class SemanticAnalyzer:
                 subject = inf.name if len(inf.bindings) == 1 else f"{inf.name}[{binding.drug}]"
                 check = self._check_rate_against_limit(
                     subject, "infusion", inf.patient, drug_decl, binding.rate, inf.line, inf.col,
+                    detail={"duration_hr": inf_hours},
                 )
                 self.checks.append(check)
 
@@ -299,38 +315,32 @@ class SemanticAnalyzer:
             check.detail["total_mg"] = total_mg
             self.checks.append(check)
 
-            if drug_decl.max_total is not None:
-                key = (rep.patient, drug_decl.name)
-                limit_mg = normalize_mass_to_mg(drug_decl.max_total)
-                prior = totals.setdefault(key, {"total": 0.0, "limit": limit_mg, "who": []})
-                prior["total"] += total_mg
-                prior["who"].append(rep.name)
-                if prior["total"] > limit_mg + 1e-9:
-                    raise SemanticError(
-                        f"cumulative dose of {drug_decl.name!r} for patient {rep.patient!r} reaches "
-                        f"{prior['total']:.3f} mg after repeat {rep.name!r} "
-                        f"(schedules: {', '.join(prior['who'])}), exceeding MAX_TOTAL "
-                        f"{drug_decl.max_total.value} {drug_decl.max_total.unit} "
-                        f"({limit_mg:.3f} mg normalized)",
-                        rep.line, rep.col,
-                    )
+    # ---- shared pulse model (Phase 3.1 / 3.2) ---------------------------
+    @staticmethod
+    def _pulses(check):
+        """Every source is a list of rectangular pulses (start, end, rate_mg_hr,
+        label). A REPEAT dose k is [k*EVERY, k*EVERY+OVER). An INFUSION is
+        [0, OVER) when it has an OVER clause (Phase 3.2), else [0, infinity)."""
+        d = check.detail
+        if check.kind == "repeat":
+            return [(k * d["interval_hr"], k * d["interval_hr"] + d["duration_hr"],
+                     check.rate_mg_per_hr, check.subject) for k in range(d["repeat_count"])]
+        end = d.get("duration_hr")
+        return [(0.0, math.inf if end is None else end, check.rate_mg_per_hr, check.subject)]
 
-        for (patient, drug), info in totals.items():
-            self.total_checks.append(TotalDoseCheck(
-                patient, drug, info["total"], info["limit"], list(info["who"])))
+    @staticmethod
+    def _active(pulses, t):
+        return [p for p in pulses if p[0] <= t + 1e-9 and t + 1e-9 < p[1] - 1e-9]
 
     # ---- stage 2b': same-drug concurrency (Phase 3.1) --------------------
     def _check_concurrent_rates(self) -> None:
-        """Phase 3.1. Several declarations can deliver the SAME drug to the same
-        patient at once (continuous infusions all run from t=0; REPEAT doses run
-        at k*EVERY for OVER hours). Each is within MAX_RATE alone, but the
-        patient receives their SUM. For every (patient, drug) with two or more
-        sources, compute the exact peak of that sum and prove it is within
-        MAX_RATE -- the same sweep the VM's runtime monitor performs, done at
-        compile time. Continuous sources add a constant; each REPEAT adds a
-        rate over the windows [k*EVERY, k*EVERY + OVER). The peak of a sum of
-        rectangular pulses always occurs at some pulse start, so it is enough
-        to evaluate the sum at t=0 and at every administration start."""
+        """Phase 3.1 (extended in 3.2 for bounded infusions). Several
+        declarations can deliver the SAME drug to the same patient at once. Each
+        is within MAX_RATE alone, but the patient receives their SUM. For every
+        (patient, drug) with two or more sources, compute the exact peak of the
+        summed rate and prove it is within MAX_RATE. The sum of rectangular
+        pulses can only increase when a pulse starts, so it is enough to
+        evaluate it at t=0 and at every pulse start."""
         groups: dict = {}   # (patient, drug) -> list of RateCheck
         for c in self.checks:
             groups.setdefault((c.patient, c.drug), []).append(c)
@@ -339,23 +349,13 @@ class SemanticAnalyzer:
             if len(members) < 2:
                 continue            # a single source is covered by its own rate check
             limit = members[0].limit_mg_per_hr
-            base = sum(m.rate_mg_per_hr for m in members if m.kind != "repeat")
-            reps = [m for m in members if m.kind == "repeat"]
-            windows = []            # (start, end, rate, name)
-            for m in reps:
-                d = m.detail
-                for k in range(d["repeat_count"]):
-                    st = k * d["interval_hr"]
-                    windows.append((st, st + d["duration_hr"], m.rate_mg_per_hr, m.subject))
-            candidates = sorted({0.0} | {w[0] for w in windows})
+            pulses = [p for m in members for p in self._pulses(m)]
             peak, peak_t, peak_who = -1.0, 0.0, []
-            for t in candidates:
-                active = [w for w in windows if w[0] <= t + 1e-9 < w[1] - 1e-9]
-                total = base + sum(w[2] for w in active)
+            for t in sorted({0.0} | {p[0] for p in pulses}):
+                active = self._active(pulses, t)
+                total = sum(p[2] for p in active)
                 if total > peak + 1e-9:
-                    who = [m.subject for m in members if m.kind != "repeat"]
-                    who += sorted({w[3] for w in active})
-                    peak, peak_t, peak_who = total, t, who
+                    peak, peak_t, peak_who = total, t, sorted({p[3] for p in active})
             if peak > limit + 1e-9:
                 involved = [m for m in members if m.subject in peak_who]
                 later = max(involved, key=lambda m: (m.line, m.col))
@@ -368,18 +368,51 @@ class SemanticAnalyzer:
             self.concurrency_checks.append(ConcurrencyCheck(
                 patient, drug, peak, limit, peak_t, peak_who))
 
-    # ---- stage 2c: drug-interaction checking (Phase 3) ------------------
-    def _check_interactions(self) -> None:
-        """For every declared INTERACTION a WITH b LIMIT x, sum the concurrent
-        continuous infusion rates of a and b for each patient and prove the
-        combined rate is within x. All INFUSION declarations for one patient
-        are treated as running concurrently from t=0; REPEAT schedules are
-        intermittent and are covered by the VM's runtime monitor instead."""
-        concurrent: dict = {}   # patient -> drug -> [(rate, subject, line, col)]
+    # ---- stage 2b'': cumulative dose (Phase 3, extended in 3.2) ----------
+    def _check_cumulative(self) -> None:
+        """Cumulative dose per (patient, drug) against MAX_TOTAL. REPEAT sources
+        contribute rate x OVER x count. Since Phase 3.2 an INFUSION with an OVER
+        clause contributes rate x OVER. An INFUSION without OVER has no end, so
+        it cannot be totalled statically; the VM monitor covers it."""
+        totals: dict = {}
+        decls = {d.name: d for d in self.program.drugs}
         for c in self.checks:
-            if c.kind in ("infusion", "conditional"):
-                concurrent.setdefault(c.patient, {}).setdefault(c.drug, []).append(
-                    (c.rate_mg_per_hr, c.subject, c.line, c.col))
+            if c.kind == "repeat":
+                mg, label = c.detail["total_mg"], "repeat"
+            elif c.detail.get("duration_hr") is not None:
+                mg, label = c.rate_mg_per_hr * c.detail["duration_hr"], "infusion"
+            else:
+                continue
+            drug_decl = decls[c.drug]
+            if drug_decl.max_total is None:
+                continue
+            key = (c.patient, c.drug)
+            limit_mg = normalize_mass_to_mg(drug_decl.max_total)
+            prior = totals.setdefault(key, {"total": 0.0, "limit": limit_mg, "who": []})
+            prior["total"] += mg
+            prior["who"].append(c.subject)
+            if prior["total"] > limit_mg + 1e-9:
+                raise SemanticError(
+                    f"cumulative dose of {c.drug!r} for patient {c.patient!r} reaches "
+                    f"{prior['total']:.3f} mg after {label} {c.subject!r} "
+                    f"(schedules: {', '.join(prior['who'])}), exceeding MAX_TOTAL "
+                    f"{drug_decl.max_total.value} {drug_decl.max_total.unit} "
+                    f"({limit_mg:.3f} mg normalized)",
+                    c.line, c.col,
+                )
+        for (patient, drug), info in totals.items():
+            self.total_checks.append(TotalDoseCheck(
+                patient, drug, info["total"], info["limit"], list(info["who"])))
+
+    # ---- stage 2c: drug-interaction checking (Phase 3, pulse-based in 3.2) --
+    def _check_interactions(self) -> None:
+        """For every INTERACTION a WITH b LIMIT x and every patient, find the
+        exact peak of rate_a(t)+rate_b(t) over the times when BOTH drugs are
+        being given, and prove it is within x. Since Phase 3.2 this covers
+        continuous infusions, bounded infusions and REPEAT doses alike."""
+        by_patient: dict = {}   # patient -> drug -> [RateCheck]
+        for c in self.checks:
+            by_patient.setdefault(c.patient, {}).setdefault(c.drug, []).append(c)
 
         for ix in self.program.interactions:
             self._require_drug(ix.drug_a, "interaction", ix.line, ix.col)
@@ -389,22 +422,32 @@ class SemanticAnalyzer:
                     f"interaction declares drug {ix.drug_a!r} with itself", ix.line, ix.col)
             limit = normalize_to_mg_per_hr(ix.limit)
 
-            for patient, by_drug in concurrent.items():
+            for patient, by_drug in by_patient.items():
                 if ix.drug_a not in by_drug or ix.drug_b not in by_drug:
                     continue
-                members = by_drug[ix.drug_a] + by_drug[ix.drug_b]
-                combined = sum(r for r, *_ in members)
-                sources = [s for _, s, _, _ in members]
-                if combined > limit + 1e-9:
-                    # Report at the later-declared contributing infusion: that is
-                    # the declaration that introduced the unsafe combination.
-                    _, _, line, col = max(members, key=lambda t: (t[2], t[3]))
+                pa = [p for m in by_drug[ix.drug_a] for p in self._pulses(m)]
+                pb = [p for m in by_drug[ix.drug_b] for p in self._pulses(m)]
+                peak, peak_t, peak_who = -1.0, 0.0, []
+                for t in sorted({p[0] for p in pa + pb} | {0.0}):
+                    act_a, act_b = self._active(pa, t), self._active(pb, t)
+                    if not act_a or not act_b:
+                        continue          # the drugs are not being given together
+                    combined = sum(p[2] for p in act_a + act_b)
+                    if combined > peak + 1e-9:
+                        peak, peak_t = combined, t
+                        peak_who = sorted({p[3] for p in act_a + act_b})
+                if peak < 0:
+                    continue
+                if peak > limit + 1e-9:
+                    members = [m for ds in (by_drug[ix.drug_a], by_drug[ix.drug_b])
+                               for m in ds if m.subject in peak_who]
+                    later = max(members, key=lambda m: (m.line, m.col))
                     raise SemanticError(
                         f"drugs {ix.drug_a!r} and {ix.drug_b!r} infused concurrently for patient "
-                        f"{patient!r} have a combined rate of {combined:.3f} mg/hr "
-                        f"(from {', '.join(sources)}), exceeding the INTERACTION limit of "
-                        f"{limit:.3f} mg/hr",
-                        line, col,
+                        f"{patient!r} have a combined rate of {peak:.3f} mg/hr "
+                        f"(from {', '.join(peak_who)}) at t={peak_t:g}hr, exceeding the "
+                        f"INTERACTION limit of {limit:.3f} mg/hr",
+                        later.line, later.col,
                     )
                 self.interaction_checks.append(InteractionCheck(
-                    patient, ix.drug_a, ix.drug_b, combined, limit, sources))
+                    patient, ix.drug_a, ix.drug_b, peak, limit, peak_who, peak_time_hr=peak_t))

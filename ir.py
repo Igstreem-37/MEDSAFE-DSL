@@ -13,7 +13,7 @@ Opcodes
     DEF_PATIENT / DEF_DRUG / DEF_INTERACT   declare entities for the VM
     WEIGHT_CMP                              statically resolved weight condition
     CHECK_RATE                              per-dose rate bound (<= max_rate)
-    INFUSE                                  start a continuous infusion at t=0
+    INFUSE                                  start an infusion at t=0 (optional duration_hr)
     SCHEDULE                                a repeated, timed administration
     CHECK_TOTAL                             cumulative dose bound (Phase 3)
     CHECK_INTERACT                          combined-rate bound (Phase 3)
@@ -51,6 +51,15 @@ class IRGenerator:
         instrs.append(Instruction(self._addr, opcode, operands))
         self._addr += 1
 
+    @staticmethod
+    def _infuse_ops(check, rate: str) -> dict:
+        ops = {"subject": check.subject, "patient": check.patient,
+               "drug": check.drug, "rate": rate}
+        dur = check.detail.get("duration_hr")      # Phase 3.2: bounded infusion
+        if dur is not None:
+            ops["duration_hr"] = f"{dur:.6f}"
+        return ops
+
     def generate(self) -> list[Instruction]:
         instrs: list[Instruction] = []
         self._addr = 0
@@ -78,8 +87,7 @@ class IRGenerator:
                            resolved=check.detail["resolved"], branch=check.detail["branch"])
                 self._emit(instrs, "CHECK_RATE", subject=check.subject, patient=check.patient,
                            drug=check.drug, rate=rate, limit=limit, verdict=check.verdict)
-                self._emit(instrs, "INFUSE", subject=check.subject, patient=check.patient,
-                           drug=check.drug, rate=rate)
+                self._emit(instrs, "INFUSE", **self._infuse_ops(check, rate))
 
             elif check.kind == "repeat":
                 # Naive lowering: unroll the loop into `repeat_count` identical
@@ -103,8 +111,7 @@ class IRGenerator:
             else:  # "infusion" (plain or one binding of a multi-drug infusion)
                 self._emit(instrs, "CHECK_RATE", subject=check.subject, patient=check.patient,
                            drug=check.drug, rate=rate, limit=limit, verdict=check.verdict)
-                self._emit(instrs, "INFUSE", subject=check.subject, patient=check.patient,
-                           drug=check.drug, rate=rate)
+                self._emit(instrs, "INFUSE", **self._infuse_ops(check, rate))
 
         for t in self.total_checks:
             self._emit(instrs, "CHECK_TOTAL", patient=t.patient, drug=t.drug,

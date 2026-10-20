@@ -29,19 +29,21 @@ def parse(src):
     return Parser(Lexer(src).tokenize()).parse_program()
 
 
-def analyze(src, skip_concurrency=False):
+def analyze(src, skip_concurrency=False, skip_interactions=False):
     program = parse(src)
     analyzer = SemanticAnalyzer(program)
     if skip_concurrency:
         # Simulates a compiler WITHOUT the Phase 3.1 static pass, so the VM's
         # runtime monitor can be tested on programs the new pass would reject.
         analyzer._check_concurrent_rates = lambda: None
+    if skip_interactions:
+        analyzer._check_interactions = lambda: None      # emulates a pre-3.2 compiler
     symtab = analyzer.analyze()
     return program, symtab, analyzer
 
 
-def compile_to_instrs(src, optimize=True, skip_concurrency=False):
-    program, symtab, a = analyze(src, skip_concurrency)
+def compile_to_instrs(src, optimize=True, skip_concurrency=False, skip_interactions=False):
+    program, symtab, a = analyze(src, skip_concurrency, skip_interactions)
     ir = IRGenerator(program, symtab, a.checks, a.total_checks, a.interaction_checks).generate()
     return Optimizer(ir).optimize()[0] if optimize else ir
 
@@ -51,10 +53,11 @@ def read_demo(name):
         return f.read()
 
 
-def run_vm(src, horizon=None, skip_concurrency=False):
+def run_vm(src, horizon=None, skip_concurrency=False, skip_interactions=False):
     """Compile -> assemble -> disassemble -> VM, exactly like the CLI does.
     skip_concurrency=True emulates a compiler without the Phase 3.1 pass."""
-    code = bytecode.assemble(compile_to_instrs(src, skip_concurrency=skip_concurrency))
+    code = bytecode.assemble(compile_to_instrs(src, skip_concurrency=skip_concurrency,
+                                               skip_interactions=skip_interactions))
     return MedsafeVM(bytecode.disassemble(code), horizon).run(), code
 
 
@@ -280,7 +283,8 @@ class TestVMExecution(unittest.TestCase):
         src = (HEAD + "INTERACTION dopamine WITH heparin LIMIT 18 mg/hr;\n"
                "INFUSION a FOR p1 USING heparin AT 5 mg/hr;\n"
                "REPEAT b FOR p1 USING dopamine AT 15 mg/hr EVERY 6 hr UNTIL 12 hr OVER 1 hr;")
-        result, _ = run_vm(src)   # static: no continuous dopamine, so no static interaction
+        # Since Phase 3.2 the compiler rejects this statically; emulate an older compiler.
+        result, _ = run_vm(src, skip_interactions=True)
         self.assertIn("INTERACTION_EXCEEDED", [a.kind for a in result.alarms])
 
     def test_instruction_count_is_reported(self):

@@ -1,0 +1,6 @@
+# Phase 3.2 error case: a bounded infusion's total dose is now proven statically.
+# 12 mg/hr x 10 hr = 120 mg exceeds MAX_TOTAL 100 mg (the rate itself is within the limit).
+PATIENT p1 { WEIGHT: 70 kg; }
+DRUG dopamine { MAX_RATE: 20 mg/hr; MAX_TOTAL: 100 mg; }
+
+INFUSION run FOR p1 USING dopamine AT 12 mg/hr OVER 10 hr;

@@ -150,7 +150,7 @@ def run(path: str, show_tokens: bool, show_ast: bool, show_symtab: bool,
               f"(MAX_TOTAL, schedules: {', '.join(t.contributors)})  -> {t.verdict}")
     for ic in analyzer.interaction_checks:
         print(f"  INTERACTION {ic.patient}/{ic.drug_a}+{ic.drug_b}: {ic.combined_mg_per_hr:.3f} mg/hr <= "
-              f"{ic.limit_mg_per_hr:.3f} mg/hr  -> {ic.verdict}")
+              f"{ic.limit_mg_per_hr:.3f} mg/hr (peak at t={ic.peak_time_hr:g}hr)  -> {ic.verdict}")
 
     # ---- Phase 2: IR generation, optimization, bytecode ----------------
     naive_ir = timed("IR generation", lambda: IRGenerator(

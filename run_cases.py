@@ -19,6 +19,9 @@ C=[
 ("TC15","Phase 3.1 error","phase2_demo.smed",[],1,"concurrent infusions of","Same-drug sum 10 + 18 + 10 = 38 > 20 mg/hr rejected statically"),
 ("TC16","Phase 3.1 error","concurrent_error.smed",[],1,"24.000 mg/hr at t=0hr","Infusion + bolus of same drug 12 + 12 = 24 > 20 rejected"),
 ("TC17","Phase 3.1 valid","phase31_demo.smed",[],0,"CONCURRENT  p1/dopamine: peak 18.000","Same-drug peak exactly 18 mg/hr <= 20; VM agrees, no alarms"),
+("TC18","Phase 3.2 valid","phase32_demo.smed",[],0,"INTERACTION p1/dopamine+heparin: 20.000","Bounded infusion total 80 mg proven; interaction with a REPEAT dose peaks exactly at limit"),
+("TC19","Phase 3.2 error","bounded_total_error.smed",[],1,"after infusion 'run'","Bounded infusion 12 x 10 = 120 mg > MAX_TOTAL 100 mg rejected statically"),
+("TC20","Phase 3.2 error","interaction_repeat_error.smed",[],1,"at t=0hr, exceeding the INTERACTION","Infusion + REPEAT dose 5 + 15 = 20 > 18 mg/hr rejected statically"),
 ]
 rows=[]
 for cid,cat,f,args,ex,sub,txt in C:

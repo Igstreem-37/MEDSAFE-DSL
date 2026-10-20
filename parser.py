@@ -145,7 +145,7 @@ class Parser:
             line=kw.line, col=kw.col,
         )
 
-    # infusion_decl ::= "INFUSION" IDENT "FOR" IDENT "USING" IDENT <infusion_tail> ";"
+    # infusion_decl ::= "INFUSION" IDENT "FOR" IDENT "USING" IDENT <infusion_tail> [ "OVER" NUMBER UNIT ] ";"
     #
     # infusion_tail ::= <rate_tail> { "," IDENT <rate_tail> }     -- plain / multi-drug
     #                  | <conditional_tail>                       -- weight-tiered
@@ -167,18 +167,30 @@ class Parser:
 
         if self.peek().type == TokenType.IF:
             conditional = self._parse_conditional_tail(first_drug.lexeme)
+            duration = self._parse_optional_over()
             self.expect(TokenType.SEMI)
             return InfusionDecl(name=name.lexeme, patient=patient.lexeme,
-                                 line=kw.line, col=kw.col, conditional=conditional)
+                                 line=kw.line, col=kw.col, conditional=conditional,
+                                 duration=duration)
 
         bindings = [self._parse_drug_binding(first_drug.lexeme)]
         while self.peek().type == TokenType.COMMA:
             self.advance()
             next_drug = self.expect(TokenType.IDENT)
             bindings.append(self._parse_drug_binding(next_drug.lexeme))
+        duration = self._parse_optional_over()
         self.expect(TokenType.SEMI)
         return InfusionDecl(name=name.lexeme, patient=patient.lexeme,
-                             line=kw.line, col=kw.col, bindings=bindings)
+                             line=kw.line, col=kw.col, bindings=bindings, duration=duration)
+
+    # Phase 3.2: [ "OVER" NUMBER UNIT ] -- OVER vs SEMI is one token of lookahead.
+    def _parse_optional_over(self):
+        if self.peek().type != TokenType.OVER:
+            return None
+        self.advance()
+        value = self.expect(TokenType.NUMBER)
+        unit = self.expect(TokenType.UNIT)
+        return Quantity(float(value.lexeme), unit.lexeme)
 
     def _parse_drug_binding(self, drug_name: str) -> DrugBinding:
         self.expect(TokenType.AT)

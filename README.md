@@ -1,4 +1,4 @@
-# MEDSAFE-DSL (Phase 3.1)
+# MEDSAFE-DSL (Phase 3.2)
 
 A domain-specific language, compiler and bytecode virtual machine for verifying clinical infusion protocols.
 Pure Python 3.10+ standard library. No installation needed.
@@ -14,12 +14,12 @@ source (.smed) -> lexer -> LL(1) parser -> AST -> semantic analysis (rate, same-
     python main.py phase3_alarm_demo.smed --strict   # passes static checks, runtime alarm, exit code 2
     python main.py phase31_demo.smed                 # Phase 3.1: same-drug sources summed and proven
     python main.py concurrent_error.smed             # Phase 3.1: rejected at compile time
-    python run_cases.py                              # 17 end-to-end cases, expected vs actual
+    python run_cases.py                              # 20 end-to-end cases, expected vs actual
     python main.py phase3_demo.smed --emit-bytecode demo.medc
     python main.py --exec demo.medc                  # run bytecode with no source
     python main.py phase3_demo.smed --perf           # timing / memory / optimizer stats
     python benchmark.py                              # scaling benchmark
-    python -m unittest discover -s tests -v          # 131 tests
+    python -m unittest discover -s tests -v          # 161 tests
 
 ## Options
 --tokens --ast --symtab --ir --optimize --bytecode --emit-bytecode FILE --exec FILE --trace --perf --horizon HOURS --strict
@@ -40,6 +40,13 @@ Several INFUSION / conditional / REPEAT sources of the same drug for one patient
 computes the exact peak of the summed rate (continuous sources from t=0, REPEAT doses at k*EVERY for OVER hours)
 and rejects the program if it exceeds MAX_RATE. phase2_demo.smed (38 mg/hr vs 20) is now a compile-time error.
 
-## Known limitations
-- MAX_TOTAL is proven statically for REPEAT schedules only; continuous infusions are checked by the VM runtime monitor.
-- INTERACTION limits are proven statically for continuous infusions; REPEAT doses are covered by the runtime monitor.
+## Phase 3.2: bounded infusions and pulse-based interactions
+    INFUSION run FOR p1 USING dopamine AT 8 mg/hr OVER 10 hr;     # optional OVER: the infusion ends after 10 hr
+- A bounded infusion contributes rate x OVER to the cumulative MAX_TOTAL proof (statically).
+- INTERACTION limits now cover continuous infusions, bounded infusions and REPEAT doses: the analyzer finds the exact
+  peak of rate_a + rate_b over the times both drugs are given.
+- Samples: phase32_demo.smed (safe), bounded_total_error.smed, interaction_repeat_error.smed.
+
+## Known limitation
+- An INFUSION without OVER has no end, so its cumulative dose cannot be totalled statically; the VM runtime monitor
+  covers it over the simulation horizon (phase3_alarm_demo.smed).
