@@ -1,0 +1,26 @@
+# MEDSAFE-DSL Phase 2 demonstration protocol
+PATIENT p1 {
+    WEIGHT: 70 kg;
+}
+
+PATIENT p2 {
+    WEIGHT: 30 kg;
+}
+
+DRUG dopamine {
+    MAX_RATE: 20 mg/hr;
+}
+
+DRUG heparin {
+    MAX_RATE: 15 mg/hr;
+}
+
+# Multi-drug (co-administered) infusion
+INFUSION combo FOR p1 USING dopamine AT 10 mg/hr, heparin AT 5 mg/hr;
+
+# Weight-tiered conditional infusion: statically resolved at compile time
+INFUSION tiered FOR p1 USING dopamine IF WEIGHT >= 50 kg THEN 18 mg/hr ELSE 8 mg/hr;
+INFUSION tiered_light FOR p2 USING dopamine IF WEIGHT >= 50 kg THEN 18 mg/hr ELSE 8 mg/hr;
+
+# Scheduled/repeated infusion: compiler computes the exact repetition count
+REPEAT r1 FOR p1 USING dopamine AT 10 mg/hr EVERY 4 hr UNTIL 24 hr;

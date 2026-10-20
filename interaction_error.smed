@@ -1,0 +1,5 @@
+PATIENT p1 { WEIGHT: 70 kg; }
+DRUG dopamine { MAX_RATE: 20 mg/hr; }
+DRUG heparin { MAX_RATE: 15 mg/hr; }
+INTERACTION dopamine WITH heparin LIMIT 12 mg/hr;
+INFUSION combo FOR p1 USING dopamine AT 10 mg/hr, heparin AT 5 mg/hr;

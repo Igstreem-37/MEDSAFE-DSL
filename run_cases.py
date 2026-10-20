@@ -1,0 +1,28 @@
+import subprocess, json, sys
+import os; SRC=os.path.dirname(os.path.abspath(__file__))
+# (id, category, file, extra args, expected exit, expected substring, expectation text)
+C=[
+("TC1","Valid","valid.smed",[],0,"COMPILATION SUCCESSFUL","Compiles; all checks SAFE"),
+("TC2","Valid","phase3_demo.smed",[],0,"no alarms","Safe protocol; no runtime alarms"),
+("TC3","Valid","phase3_demo.smed",["--strict"],0,"no alarms","--strict with no alarms exits 0"),
+("TC4","Syntax error","syntax_error.smed",[],1,"Syntax","Rejected with a syntax error"),
+("TC5","Semantic error","semantic_error.smed",[],1,"Semantic Error","Rate above the drug limit rejected"),
+("TC6","Multi-drug error","multidrug_error.smed",[],1,"Semantic Error","One drug in a multi-drug infusion exceeds its limit"),
+("TC7","Conditional error","conditional_error.smed",[],1,"Semantic Error","Chosen weight branch exceeds the limit"),
+("TC8","Repeat error","repeat_error.smed",[],1,"Semantic Error","REPEAT dose above the limit rejected"),
+("TC9","Cumulative error","cumulative_error.smed",[],1,"exceeding MAX_TOTAL","Cumulative dose 60 mg > MAX_TOTAL 40 mg"),
+("TC10","Interaction error","interaction_error.smed",[],1,"INTERACTION limit","Combined 15 mg/hr > limit 12 mg/hr"),
+("TC11","OVER error","over_error.smed",[],1,"longer than its EVERY","OVER 6 hr > EVERY 4 hr rejected"),
+("TC12","Runtime hazard","phase3_alarm_demo.smed",[],0,"5 ALARM","Passes static checks; 5 runtime alarms"),
+("TC13","Runtime hazard","phase3_alarm_demo.smed",["--strict"],2,"5 ALARM","--strict returns exit code 2"),
+("TC14","Runtime hazard","phase3_alarm_demo.smed",[],0,"t=10.500hr","Cumulative crossing at exactly 10.5 hr"),
+("TC15","Phase 2 file (now Phase 3.1 item)","phase2_demo.smed",[],0,"RATE_EXCEEDED","Currently passes static checks but runtime alarm (38 > 20 mg/hr)"),
+]
+rows=[]
+for cid,cat,f,args,ex,sub,txt in C:
+    r=subprocess.run([sys.executable,"main.py",f]+args,cwd=SRC,capture_output=True,text=True)
+    out=r.stdout+r.stderr
+    ok=(r.returncode==ex and sub in out)
+    rows.append(dict(id=cid,cat=cat,file=f,args=" ".join(args),exp=txt,exp_exit=ex,act_exit=r.returncode,ok=ok))
+json.dump(rows,open('cases_result.json','w'),indent=1)
+for r in rows: print(r['id'],r['file'],r['args'],'exit',r['act_exit'],'PASS' if r['ok'] else 'FAIL')

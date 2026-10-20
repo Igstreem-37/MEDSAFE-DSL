@@ -17,6 +17,18 @@ class TokenType(Enum):
     FOR = auto()
     USING = auto()
     AT = auto()
+    IF = auto()
+    THEN = auto()
+    ELSE = auto()
+    REPEAT = auto()
+    EVERY = auto()
+    UNTIL = auto()
+    # Phase 3: cumulative dose bounds, per-administration duration, drug interactions
+    MAX_TOTAL = auto()
+    OVER = auto()
+    INTERACTION = auto()
+    WITH = auto()
+    LIMIT = auto()
 
     # Literals
     IDENT = auto()
@@ -29,6 +41,14 @@ class TokenType(Enum):
     COLON = auto()        # :
     SEMI = auto()         # ;
     SLASH = auto()        # /
+    COMMA = auto()        # ,
+
+    # Comparators (Phase 2: weight-tiered conditionals)
+    GT = auto()            # >
+    GTE = auto()           # >=
+    LT = auto()            # <
+    LTE = auto()           # <=
+    EQEQ = auto()          # ==
 
     EOF = auto()
 

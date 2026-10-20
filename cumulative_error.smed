@@ -1,0 +1,3 @@
+PATIENT p1 { WEIGHT: 70 kg; }
+DRUG dopamine { MAX_RATE: 20 mg/hr; MAX_TOTAL: 40 mg; }
+REPEAT r1 FOR p1 USING dopamine AT 10 mg/hr EVERY 4 hr UNTIL 24 hr OVER 1 hr;

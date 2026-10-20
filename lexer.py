@@ -17,6 +17,17 @@ KEYWORDS = {
     "FOR": TokenType.FOR,
     "USING": TokenType.USING,
     "AT": TokenType.AT,
+    "IF": TokenType.IF,
+    "THEN": TokenType.THEN,
+    "ELSE": TokenType.ELSE,
+    "REPEAT": TokenType.REPEAT,
+    "EVERY": TokenType.EVERY,
+    "UNTIL": TokenType.UNTIL,
+    "MAX_TOTAL": TokenType.MAX_TOTAL,
+    "OVER": TokenType.OVER,
+    "INTERACTION": TokenType.INTERACTION,
+    "WITH": TokenType.WITH,
+    "LIMIT": TokenType.LIMIT,
 }
 
 UNITS = {"ml", "mg", "hr", "kg", "min", "mcg", "L"}
@@ -32,6 +43,14 @@ TOKEN_SPEC = [
     ("COLON",    r":"),
     ("SEMI",     r";"),
     ("SLASH",    r"/"),
+    ("COMMA",    r","),
+    # Two-character comparators MUST be tried before their single-char prefixes
+    # (maximal munch): >= before >, <= before <.
+    ("GTE",      r">="),
+    ("LTE",      r"<="),
+    ("EQEQ",     r"=="),
+    ("GT",       r">"),
+    ("LT",       r"<"),
     ("MISMATCH", r"."),
 ]
 

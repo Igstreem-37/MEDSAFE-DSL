@@ -1,0 +1,3 @@
+PATIENT p1 { WEIGHT: 70 kg; }
+DRUG dopamine { MAX_RATE: 20 mg/hr; }
+INFUSION tiered FOR p1 USING dopamine IF WEIGHT >= 50 kg THEN 25 mg/hr ELSE 8 mg/hr;

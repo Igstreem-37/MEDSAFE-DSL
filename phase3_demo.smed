@@ -1,0 +1,18 @@
+# MEDSAFE-DSL Phase 3 demonstration: a safe multi-patient ICU protocol.
+# Exercises: cumulative MAX_TOTAL, INTERACTION limits, REPEAT ... OVER,
+# multi-drug and weight-tiered infusions -- all within every limit.
+PATIENT p1 { WEIGHT: 70 kg; }
+PATIENT p2 { WEIGHT: 30 kg; }
+
+DRUG dopamine { MAX_RATE: 20 mg/hr; MAX_TOTAL: 400 mg; }
+DRUG heparin  { MAX_RATE: 15 mg/hr; }
+DRUG morphine { MAX_RATE: 4 mg/hr;  MAX_TOTAL: 60 mg; }
+
+# Dopamine and heparin together must never exceed 30 mg/hr.
+INTERACTION dopamine WITH heparin LIMIT 30 mg/hr;
+
+INFUSION combo  FOR p1 USING dopamine AT 8 mg/hr, heparin AT 5 mg/hr;
+INFUSION tiered FOR p2 USING dopamine IF WEIGHT >= 50 kg THEN 18 mg/hr ELSE 6 mg/hr;
+
+# Morphine bolus: 3 mg/hr for 2 hr, every 6 hr, over a 24 hr day (4 doses = 24 mg).
+REPEAT bolus FOR p1 USING morphine AT 3 mg/hr EVERY 6 hr UNTIL 24 hr OVER 2 hr;

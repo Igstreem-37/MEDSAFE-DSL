@@ -28,7 +28,7 @@ class TestParser(unittest.TestCase):
     def test_parses_infusion_decl(self):
         program = self._parse(VALID_SRC)
         inf = program.infusions[0]
-        self.assertEqual((inf.patient, inf.drug), ("p1", "dopamine"))
+        self.assertEqual((inf.patient, inf.bindings[0].drug), ("p1", "dopamine"))
 
     def test_missing_semicolon_raises_syntax_error(self):
         bad = "PATIENT p3 { WEIGHT: 80 kg }"
