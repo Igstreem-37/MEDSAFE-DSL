@@ -129,7 +129,7 @@ def run(path: str, show_tokens: bool, show_ast: bool, show_symtab: bool,
                   f"{entry.baseline_value:<10}{entry.declared_at[0]}:{entry.declared_at[1]}")
 
     if stage_mode:
-        print("DOMAIN STATIC ANALYSIS OK  (rate-limit + cumulative dose + interaction)")
+        print("DOMAIN STATIC ANALYSIS OK  (rate + concurrent same-drug + cumulative + interaction)")
 
     print(f"\n[Diagnostic Report] {len(analyzer.checks)} rate check(s) statically verified:")
     for c in analyzer.checks:
@@ -141,6 +141,10 @@ def run(path: str, show_tokens: bool, show_ast: bool, show_symtab: bool,
                      f"{c.detail['total_mg']:.1f} mg total]")
         print(f"  {c.kind.upper():<11} {c.subject}: {c.rate_mg_per_hr:.3f} mg/hr <= "
               f"{c.limit_mg_per_hr:.3f} mg/hr  -> {c.verdict}{extra}")
+    for cc in analyzer.concurrency_checks:
+        print(f"  CONCURRENT  {cc.patient}/{cc.drug}: peak {cc.peak_mg_per_hr:.3f} mg/hr at "
+              f"t={cc.peak_time_hr:g}hr <= {cc.limit_mg_per_hr:.3f} mg/hr "
+              f"(sources: {', '.join(cc.sources)})  -> {cc.verdict}")
     for t in analyzer.total_checks:
         print(f"  CUMULATIVE  {t.patient}/{t.drug}: {t.total_mg:.3f} mg <= {t.limit_mg:.3f} mg "
               f"(MAX_TOTAL, schedules: {', '.join(t.contributors)})  -> {t.verdict}")

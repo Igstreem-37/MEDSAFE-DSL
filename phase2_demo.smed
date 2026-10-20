@@ -1,4 +1,7 @@
-# MEDSAFE-DSL Phase 2 demonstration protocol
+# MEDSAFE-DSL Phase 2 demonstration protocol.
+# NOTE (Phase 3.1): this program was accepted by the Phase 2 and Phase 3 compilers, but three
+# dopamine sources for p1 run at once (10 + 18 + 10 = 38 mg/hr > 20 mg/hr). Since Phase 3.1
+# it is rejected at compile time. It is kept to show what Phase 2 could not detect.
 PATIENT p1 {
     WEIGHT: 70 kg;
 }

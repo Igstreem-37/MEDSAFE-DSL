@@ -95,6 +95,19 @@ class InteractionCheck:
     verdict: str = "SAFE"
 
 
+@dataclass
+class ConcurrencyCheck:
+    """Phase 3.1: statically-verified peak concurrent rate of ONE drug for one
+    patient, summed across every INFUSION / conditional / REPEAT source."""
+    patient: str
+    drug: str
+    peak_mg_per_hr: float
+    limit_mg_per_hr: float
+    peak_time_hr: float
+    sources: list
+    verdict: str = "SAFE"
+
+
 def normalize_mass_to_mg(q: Quantity) -> float:
     """Converts a plain mass quantity (no time component, e.g. '200 mg') to mg."""
     if q.unit not in _MASS_TO_MG:
@@ -132,11 +145,14 @@ class SemanticAnalyzer:
         # Phase 3 results
         self.total_checks: list[TotalDoseCheck] = []
         self.interaction_checks: list[InteractionCheck] = []
+        # Phase 3.1 result
+        self.concurrency_checks: list[ConcurrencyCheck] = []
 
     def analyze(self) -> SymbolTable:
         self._bind_declarations()
         self._check_infusions()
         self._check_repeats()
+        self._check_concurrent_rates()
         self._check_interactions()
         return self.symtab
 
@@ -302,6 +318,55 @@ class SemanticAnalyzer:
         for (patient, drug), info in totals.items():
             self.total_checks.append(TotalDoseCheck(
                 patient, drug, info["total"], info["limit"], list(info["who"])))
+
+    # ---- stage 2b': same-drug concurrency (Phase 3.1) --------------------
+    def _check_concurrent_rates(self) -> None:
+        """Phase 3.1. Several declarations can deliver the SAME drug to the same
+        patient at once (continuous infusions all run from t=0; REPEAT doses run
+        at k*EVERY for OVER hours). Each is within MAX_RATE alone, but the
+        patient receives their SUM. For every (patient, drug) with two or more
+        sources, compute the exact peak of that sum and prove it is within
+        MAX_RATE -- the same sweep the VM's runtime monitor performs, done at
+        compile time. Continuous sources add a constant; each REPEAT adds a
+        rate over the windows [k*EVERY, k*EVERY + OVER). The peak of a sum of
+        rectangular pulses always occurs at some pulse start, so it is enough
+        to evaluate the sum at t=0 and at every administration start."""
+        groups: dict = {}   # (patient, drug) -> list of RateCheck
+        for c in self.checks:
+            groups.setdefault((c.patient, c.drug), []).append(c)
+
+        for (patient, drug), members in groups.items():
+            if len(members) < 2:
+                continue            # a single source is covered by its own rate check
+            limit = members[0].limit_mg_per_hr
+            base = sum(m.rate_mg_per_hr for m in members if m.kind != "repeat")
+            reps = [m for m in members if m.kind == "repeat"]
+            windows = []            # (start, end, rate, name)
+            for m in reps:
+                d = m.detail
+                for k in range(d["repeat_count"]):
+                    st = k * d["interval_hr"]
+                    windows.append((st, st + d["duration_hr"], m.rate_mg_per_hr, m.subject))
+            candidates = sorted({0.0} | {w[0] for w in windows})
+            peak, peak_t, peak_who = -1.0, 0.0, []
+            for t in candidates:
+                active = [w for w in windows if w[0] <= t + 1e-9 < w[1] - 1e-9]
+                total = base + sum(w[2] for w in active)
+                if total > peak + 1e-9:
+                    who = [m.subject for m in members if m.kind != "repeat"]
+                    who += sorted({w[3] for w in active})
+                    peak, peak_t, peak_who = total, t, who
+            if peak > limit + 1e-9:
+                involved = [m for m in members if m.subject in peak_who]
+                later = max(involved, key=lambda m: (m.line, m.col))
+                raise SemanticError(
+                    f"concurrent infusions of {drug!r} for patient {patient!r} "
+                    f"({', '.join(peak_who)}) reach a combined rate of {peak:.3f} mg/hr at "
+                    f"t={peak_t:g}hr, exceeding max_rate {limit:.3f} mg/hr",
+                    later.line, later.col,
+                )
+            self.concurrency_checks.append(ConcurrencyCheck(
+                patient, drug, peak, limit, peak_t, peak_who))
 
     # ---- stage 2c: drug-interaction checking (Phase 3) ------------------
     def _check_interactions(self) -> None:

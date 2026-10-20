@@ -13,10 +13,12 @@ C=[
 ("TC9","Cumulative error","cumulative_error.smed",[],1,"exceeding MAX_TOTAL","Cumulative dose 60 mg > MAX_TOTAL 40 mg"),
 ("TC10","Interaction error","interaction_error.smed",[],1,"INTERACTION limit","Combined 15 mg/hr > limit 12 mg/hr"),
 ("TC11","OVER error","over_error.smed",[],1,"longer than its EVERY","OVER 6 hr > EVERY 4 hr rejected"),
-("TC12","Runtime hazard","phase3_alarm_demo.smed",[],0,"5 ALARM","Passes static checks; 5 runtime alarms"),
-("TC13","Runtime hazard","phase3_alarm_demo.smed",["--strict"],2,"5 ALARM","--strict returns exit code 2"),
-("TC14","Runtime hazard","phase3_alarm_demo.smed",[],0,"t=10.500hr","Cumulative crossing at exactly 10.5 hr"),
-("TC15","Phase 2 file (now Phase 3.1 item)","phase2_demo.smed",[],0,"RATE_EXCEEDED","Currently passes static checks but runtime alarm (38 > 20 mg/hr)"),
+("TC12","Runtime hazard","phase3_alarm_demo.smed",[],0,"1 ALARM","Passes static checks; runtime TOTAL alarm (288 mg > 150 mg)"),
+("TC13","Runtime hazard","phase3_alarm_demo.smed",["--strict"],2,"1 ALARM","--strict returns exit code 2"),
+("TC14","Runtime hazard","phase3_alarm_demo.smed",[],0,"t=12.500hr","Cumulative crossing at exactly 12.5 hr (150 / 12)"),
+("TC15","Phase 3.1 error","phase2_demo.smed",[],1,"concurrent infusions of","Same-drug sum 10 + 18 + 10 = 38 > 20 mg/hr rejected statically"),
+("TC16","Phase 3.1 error","concurrent_error.smed",[],1,"24.000 mg/hr at t=0hr","Infusion + bolus of same drug 12 + 12 = 24 > 20 rejected"),
+("TC17","Phase 3.1 valid","phase31_demo.smed",[],0,"CONCURRENT  p1/dopamine: peak 18.000","Same-drug peak exactly 18 mg/hr <= 20; VM agrees, no alarms"),
 ]
 rows=[]
 for cid,cat,f,args,ex,sub,txt in C:

@@ -29,15 +29,19 @@ def parse(src):
     return Parser(Lexer(src).tokenize()).parse_program()
 
 
-def analyze(src):
+def analyze(src, skip_concurrency=False):
     program = parse(src)
     analyzer = SemanticAnalyzer(program)
+    if skip_concurrency:
+        # Simulates a compiler WITHOUT the Phase 3.1 static pass, so the VM's
+        # runtime monitor can be tested on programs the new pass would reject.
+        analyzer._check_concurrent_rates = lambda: None
     symtab = analyzer.analyze()
     return program, symtab, analyzer
 
 
-def compile_to_instrs(src, optimize=True):
-    program, symtab, a = analyze(src)
+def compile_to_instrs(src, optimize=True, skip_concurrency=False):
+    program, symtab, a = analyze(src, skip_concurrency)
     ir = IRGenerator(program, symtab, a.checks, a.total_checks, a.interaction_checks).generate()
     return Optimizer(ir).optimize()[0] if optimize else ir
 
@@ -47,9 +51,10 @@ def read_demo(name):
         return f.read()
 
 
-def run_vm(src, horizon=None):
-    """Compile -> assemble -> disassemble -> VM, exactly like the CLI does."""
-    code = bytecode.assemble(compile_to_instrs(src))
+def run_vm(src, horizon=None, skip_concurrency=False):
+    """Compile -> assemble -> disassemble -> VM, exactly like the CLI does.
+    skip_concurrency=True emulates a compiler without the Phase 3.1 pass."""
+    code = bytecode.assemble(compile_to_instrs(src, skip_concurrency=skip_concurrency))
     return MedsafeVM(bytecode.disassemble(code), horizon).run(), code
 
 
@@ -248,24 +253,28 @@ class TestVMExecution(unittest.TestCase):
         result, _ = run_vm(read_demo("phase3_demo.smed"), horizon=12.0)
         self.assertAlmostEqual(result.cumulative[("p1", "dopamine")], 96.0)
 
-    def test_runtime_monitor_catches_overlap_the_static_pass_cannot(self):
-        # Compiles cleanly (each declaration is within its own limits) ...
+    def test_runtime_monitor_catches_continuous_total_the_static_pass_cannot(self):
+        # Compiles cleanly: no REPEAT feeds MAX_TOTAL and every rate is within limit ...
         result, _ = run_vm(read_demo("phase3_alarm_demo.smed"))
-        kinds = [a.kind for a in result.alarms]
-        # ... but the bolus overlaps the continuous infusion: 12 + 12 = 24 > 20.
-        self.assertEqual(kinds.count("RATE_EXCEEDED"), 4)
-        self.assertEqual(kinds.count("TOTAL_EXCEEDED"), 1)
+        # ... but 12 mg/hr x 24 hr = 288 mg crosses the 150 mg MAX_TOTAL.
+        self.assertEqual([a.kind for a in result.alarms], ["TOTAL_EXCEEDED"])
         self.assertEqual(result.status, "ALARM")
 
     def test_total_alarm_reports_exact_crossing_time(self):
         result, _ = run_vm(read_demo("phase3_alarm_demo.smed"))
-        total = next(a for a in result.alarms if a.kind == "TOTAL_EXCEEDED")
-        self.assertAlmostEqual(total.time_hr, 10.5)
+        self.assertAlmostEqual(result.alarms[0].time_hr, 12.5)    # 150 / 12
 
-    def test_rate_alarms_start_at_each_bolus(self):
-        result, _ = run_vm(read_demo("phase3_alarm_demo.smed"))
+    def test_vm_still_catches_overlap_if_static_pass_is_absent(self):
+        # Defense in depth: a compiler lacking the Phase 3.1 pass lets the overlap through;
+        # the VM's runtime monitor still catches it at each bolus (12 + 12 = 24 > 20).
+        result, _ = run_vm(read_demo("concurrent_error.smed"), skip_concurrency=True)
         times = [a.time_hr for a in result.alarms if a.kind == "RATE_EXCEEDED"]
         self.assertEqual(times, [0.0, 6.0, 12.0, 18.0])
+
+    def test_alarm_is_raised_once_per_violation_episode(self):
+        result, _ = run_vm(read_demo("concurrent_error.smed"), skip_concurrency=True)
+        rate_alarms = [a for a in result.alarms if a.kind == "RATE_EXCEEDED"]
+        self.assertEqual(len(rate_alarms), 4)   # one per bolus, not one per event interval
 
     def test_runtime_interaction_alarm(self):
         src = (HEAD + "INTERACTION dopamine WITH heparin LIMIT 18 mg/hr;\n"
@@ -273,11 +282,6 @@ class TestVMExecution(unittest.TestCase):
                "REPEAT b FOR p1 USING dopamine AT 15 mg/hr EVERY 6 hr UNTIL 12 hr OVER 1 hr;")
         result, _ = run_vm(src)   # static: no continuous dopamine, so no static interaction
         self.assertIn("INTERACTION_EXCEEDED", [a.kind for a in result.alarms])
-
-    def test_alarm_is_raised_once_per_violation_episode(self):
-        result, _ = run_vm(read_demo("phase3_alarm_demo.smed"))
-        rate_alarms = [a for a in result.alarms if a.kind == "RATE_EXCEEDED"]
-        self.assertEqual(len(rate_alarms), 4)   # one per bolus, not one per event interval
 
     def test_instruction_count_is_reported(self):
         result, _ = run_vm(read_demo("phase3_demo.smed"))

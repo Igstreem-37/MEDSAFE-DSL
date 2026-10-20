@@ -10,16 +10,20 @@ Python 3.10+ (check: `python --version`). No packages to install.
 ## Commands
     python main.py phase3_demo.smed                 # safe protocol: compile + VM run
     python main.py phase3_demo.smed --trace         # simulation event table
-    python main.py phase3_alarm_demo.smed           # passes static checks, runtime alarms
+    python main.py phase3_alarm_demo.smed           # passes static checks, runtime alarm
     python main.py phase3_alarm_demo.smed --strict  # exit code 2 on alarms
     python main.py cumulative_error.smed            # static cumulative-dose error
     python main.py interaction_error.smed           # static interaction error
     python main.py over_error.smed                  # OVER > EVERY error
+    python main.py phase31_demo.smed                # Phase 3.1: same-drug sum proven safe
+    python main.py concurrent_error.smed            # Phase 3.1: same-drug sum rejected
+    python main.py phase2_demo.smed                 # now a compile-time error (Phase 3.1)
+    python run_cases.py                             # 17 end-to-end cases
     python main.py phase3_demo.smed --emit-bytecode demo.medc
     python main.py --exec demo.medc                 # run bytecode, no source
     python main.py phase3_demo.smed --perf          # timing / memory / optimizer
     python benchmark.py                             # scaling benchmark
-    python -m unittest discover -s tests -v         # all 114 tests
+    python -m unittest discover -s tests -v         # all 131 tests
 
 ## Your own protocol
     PATIENT p1 { WEIGHT: 70 kg; }

@@ -1,0 +1,9 @@
+# Phase 3.1 demonstration: several sources of the SAME drug for one patient.
+# Their rates ADD UP, so the analyzer proves the peak combined rate (not just
+# each declaration) is within MAX_RATE. Here the peak is exactly 18 mg/hr <= 20.
+PATIENT p1 { WEIGHT: 70 kg; }
+DRUG dopamine { MAX_RATE: 20 mg/hr; MAX_TOTAL: 600 mg; }
+
+INFUSION base  FOR p1 USING dopamine AT 8 mg/hr;
+INFUSION extra FOR p1 USING dopamine AT 4 mg/hr;
+REPEAT bolus   FOR p1 USING dopamine AT 6 mg/hr EVERY 6 hr UNTIL 24 hr OVER 1 hr;

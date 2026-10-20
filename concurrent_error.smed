@@ -1,0 +1,9 @@
+# Phase 3.1 error case: each declaration is individually within the 20 mg/hr
+# limit, but the continuous infusion and the REPEAT bolus deliver the SAME drug
+# at the same time (12 + 12 = 24 mg/hr). Phase 3 only caught this at runtime;
+# Phase 3.1 rejects it at compile time.
+PATIENT p1 { WEIGHT: 70 kg; }
+DRUG dopamine { MAX_RATE: 20 mg/hr; MAX_TOTAL: 150 mg; }
+
+INFUSION base FOR p1 USING dopamine AT 12 mg/hr;
+REPEAT bolus FOR p1 USING dopamine AT 12 mg/hr EVERY 6 hr UNTIL 24 hr OVER 1 hr;

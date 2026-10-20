@@ -1,8 +1,9 @@
-# Passes every STATIC check (each declaration is individually within its
-# limits) but is unsafe at RUNTIME: the bolus overlaps the continuous
-# infusion of the same drug. Only the VM's runtime monitor can see this.
+# Passes every STATIC check but is unsafe at RUNTIME. A continuous infusion has
+# no declared end, so MAX_TOTAL cannot be proven statically for it; only the
+# VM's simulation (24 hr horizon) sees 12 mg/hr x 24 hr = 288 mg > 150 mg.
 PATIENT p1 { WEIGHT: 70 kg; }
 DRUG dopamine { MAX_RATE: 20 mg/hr; MAX_TOTAL: 150 mg; }
+DRUG morphine { MAX_RATE: 4 mg/hr;  MAX_TOTAL: 60 mg; }
 
 INFUSION base FOR p1 USING dopamine AT 12 mg/hr;
-REPEAT bolus FOR p1 USING dopamine AT 12 mg/hr EVERY 6 hr UNTIL 24 hr OVER 1 hr;
+REPEAT bolus FOR p1 USING morphine AT 3 mg/hr EVERY 6 hr UNTIL 24 hr OVER 2 hr;
